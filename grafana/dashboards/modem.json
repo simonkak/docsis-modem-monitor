@@ -1,0 +1,136 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "timezone": "browser",
+  "title": "Cable Modem (DOCSIS)",
+  "uid": "cable-modem",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Modem up",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [
+        { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+      ], "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } } },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "refId": "A", "expr": "modem_up", "datasource": { "type": "prometheus", "uid": "prometheus" } } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Locked downstream channels",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 8 }, { "color": "green", "value": 20 } ] } } },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "refId": "A", "expr": "sum(modem_downstream_locked)", "datasource": { "type": "prometheus", "uid": "prometheus" } } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Max upstream power (dBmV)",
+      "description": "Ideal ~45, ok up to ~50, 51+ = no headroom / trouble.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "dBmV", "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 48 }, { "color": "red", "value": 51 } ] } } },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "refId": "A", "expr": "max(modem_upstream_power_dbmv)", "datasource": { "type": "prometheus", "uid": "prometheus" } } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Min downstream SNR/RxMER (dB)",
+      "description": "256QAM needs ~30 to hold; <33 = marginal.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "dB", "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 33 }, { "color": "green", "value": 35 } ] } } },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "refId": "A", "expr": "min(modem_downstream_rxmer_db)", "datasource": { "type": "prometheus", "uid": "prometheus" } } ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Upstream power per channel (dBmV)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "dBmV", "custom": { "drawStyle": "line", "lineWidth": 2, "showPoints": "never" },
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 48 }, { "color": "red", "value": 51 } ] },
+        "custom.thresholdsStyle": { "mode": "line" } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "modem_upstream_power_dbmv", "legendFormat": "US {{usid}}", "datasource": { "type": "prometheus", "uid": "prometheus" } } ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Downstream power per channel (dBmV)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "dBmV", "custom": { "drawStyle": "line", "lineWidth": 1, "showPoints": "never" },
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": -10 }, { "color": "red", "value": 10 } ] } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "modem_downstream_power_dbmv", "legendFormat": "DS {{chid}}", "datasource": { "type": "prometheus", "uid": "prometheus" } } ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Downstream SNR / RxMER per channel (dB)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "dB", "custom": { "drawStyle": "line", "lineWidth": 1, "showPoints": "never" },
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 33 }, { "color": "green", "value": 35 } ] },
+        "custom.thresholdsStyle": { "mode": "dashed" } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "modem_downstream_rxmer_db", "legendFormat": "DS {{chid}}", "datasource": { "type": "prometheus", "uid": "prometheus" } } ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Post-RS (uncorrectable) error rate per channel [/s]",
+      "description": "The key fault indicator. Reset-safe rate over 5m.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "errors/s", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never" } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "expr": "rate(modem_downstream_postrs_errors_total[5m])", "legendFormat": "DS {{chid}}", "datasource": { "type": "prometheus", "uid": "prometheus" } } ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Upstream ranging timeouts rate (T3 / T4) [/s]",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "/s", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (usid) (rate(modem_upstream_t3_timeouts_total[5m]))", "legendFormat": "T3 US {{usid}}", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "refId": "B", "expr": "sum by (usid) (rate(modem_upstream_t4_timeouts_total[5m]))", "legendFormat": "T4 US {{usid}}", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Pre-RS (correctable) error rate per channel [/s]",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "errors/s", "custom": { "drawStyle": "line", "lineWidth": 1, "showPoints": "never" } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "expr": "rate(modem_downstream_prers_errors_total[5m])", "legendFormat": "DS {{chid}}", "datasource": { "type": "prometheus", "uid": "prometheus" } } ]
+    },
+    {
+      "id": 11,
+      "type": "logs",
+      "title": "Modem event log (dziennik)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 28 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
+      "targets": [ { "refId": "A", "expr": "{job=\"modem\"}", "datasource": { "type": "loki", "uid": "loki" } } ]
+    }
+  ]
+}

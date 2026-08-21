@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 30s
+  scrape_timeout: 20s
+
+scrape_configs:
+  - job_name: modem
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["modem-exporter:9210"]

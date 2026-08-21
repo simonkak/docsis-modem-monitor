@@ -1,0 +1,69 @@
+services:
+  modem-exporter:
+    build: ./collector
+    container_name: modem-exporter
+    restart: unless-stopped
+    environment:
+      MODEM_URL: ${MODEM_URL:-http://192.168.0.1}
+      MODEM_PASSWORD: ${MODEM_PASSWORD:?set MODEM_PASSWORD in .env}
+      POLL_INTERVAL: ${POLL_INTERVAL:-30s}
+      # Exponential backoff on failed logins so repeated retries never trip the
+      # modem's brute-force lockout (which would self-sustain the outage).
+      LOGIN_BACKOFF_BASE: ${LOGIN_BACKOFF_BASE:-60s}
+      LOGIN_BACKOFF_MAX: ${LOGIN_BACKOFF_MAX:-15m}
+      LOKI_URL: http://loki:3100
+      LISTEN_ADDR: ":9210"
+    networks: [monitor]
+
+  prometheus:
+    image: prom/prometheus:v2.53.1
+    container_name: modem-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=180d
+    networks: [monitor]
+
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: modem-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    networks: [monitor]
+
+  grafana:
+    image: grafana/grafana:11.1.3
+    container_name: modem-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on: [prometheus, loki]
+    networks: [monitor]
+
+networks:
+  monitor:
+    driver: bridge
+    ipam:
+      config:
+        # Pinned away from 192.168.0.0/20 so the exporter reaches the REAL
+        # modem at 192.168.0.1 and a bridge never steals that address.
+        - subnet: 10.9.0.0/24
+
+volumes:
+  prometheus-data:
+  loki-data:
+  grafana-data:

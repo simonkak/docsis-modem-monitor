@@ -1,0 +1,14 @@
+# Secrets — never commit real credentials
+.env
+*.env
+!.env.example
+
+# Build artifacts
+/modem-exporter
+collector/modem-exporter
+*.exe
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
