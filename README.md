@@ -1,7 +1,8 @@
 # DOCSIS Cable Modem Monitor
 
-A small self-hosted monitoring stack for **DOCSIS cable modems** with an
-Askey / Compal (NET-DK) web interface. A Go collector logs into the modem,
+A small self-hosted monitoring stack for **DOCSIS cable modems** with a
+Compal (NET-DK / CBN) web interface — developed against the **Compal
+CH7465PLAY**. A Go collector logs into the modem,
 scrapes the downstream/upstream signal tables and the event log, and feeds them
 into **Prometheus + Loki + Grafana** — so you get continuous history of signal
 levels, error rates and modem events instead of a single point-in-time reading.
@@ -20,8 +21,11 @@ Go collector (modem-exporter) ── Prometheus metrics ─▶ Prometheus ─▶
 
 ## Compatibility
 
-Written against the **Askey / Compal `NET-DK` firmware** (seen on Play /
-Liberty Global modems in Europe). The modem is driven through its own JS API:
+Developed and tested against the **Compal CH7465PLAY** — the Play-branded
+variant of the Compal **CH7465LG** "Connect Box" family used by Liberty Global /
+UPC across Europe — running Compal Broadband Networks (**CBN**) `NET-DK`
+firmware. Other modems in that family are likely to work as-is. The modem is
+driven through its own JS API:
 
 - login: `POST /xml/setter.xml` with `token=<sessionToken cookie>&fun=15&Username=NULL&Password=sha256hex(password)`
 - data: `POST /xml/getter.xml` with `token=…&fun=N` (10 = downstream, 11 = upstream, 13 = event log, 1 = global status)
