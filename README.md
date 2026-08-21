@@ -11,6 +11,8 @@ Useful when you have an intermittent line fault: the dashboard captures the
 whole episode (upstream power climbing, SNR dropping, error-rate spikes, ranging
 timeouts) with timestamps, which is exactly the evidence an ISP needs.
 
+![Grafana dashboard](docs/dashboard.png)
+
 ```
 cable modem (default http://192.168.0.1)
    │  HTTP  POST /xml/getter.xml   fun=10 downstream · 11 upstream · 13 event log
