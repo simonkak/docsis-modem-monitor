@@ -88,3 +88,29 @@ fi
 # KDE-native passive popup as a reliable second channel on Wayland.
 command -v kdialog >/dev/null 2>&1 && \
   kdialog --title "Modem Monitor — $verdict" --passivepopup "$ONELINE" 12 >/dev/null 2>&1 || true
+
+# ---- Auto-retire this daily cron once the line has proven stable ----
+# Goal: stop the daily notification a few days after the 2026-11-21 cable fix,
+# but ONLY if the line actually held. On/after RETIRE_ON, if the log shows no
+# WATCH/DEGRADED verdict (every run was HEALTHY), remove our own two-line cron
+# block and send a final "retired" notice. If the line wobbled, stay on.
+# The desktop-env vars exported above are reused here for the notification.
+RETIRE_ON="${RETIRE_ON:-2026-11-28}"
+_today=$(date +%F)   # YYYY-MM-DD sorts lexically == chronologically
+if [[ "$_today" > "$RETIRE_ON" || "$_today" == "$RETIRE_ON" ]] \
+   && command -v crontab >/dev/null 2>&1 \
+   && crontab -l 2>/dev/null | grep -q 'daily-summary\.sh'; then
+  if grep -Eq 'WATCH|DEGRADED' "$LOG" 2>/dev/null; then
+    : # line showed instability since the fix — keep watching, do not retire
+  else
+    # Strip only our own lines (comment + schedule); leave other crontab entries.
+    { crontab -l 2>/dev/null | grep -vE 'modem-daily-summary|daily-summary\.sh'; } \
+      | crontab - || true
+    _MSG="Line stable through $_today — daily DOCSIS monitor retired (cron removed). Grafana dashboards stay live at http://localhost:3001."
+    printf '%s\n' "✅ [$STAMP] $_MSG" >> "$LOG"
+    command -v notify-send >/dev/null 2>&1 && \
+      notify-send -u normal -t 20000 -a "Modem Monitor" "✅ Monitor retired" "$_MSG" 2>/dev/null || true
+    command -v kdialog >/dev/null 2>&1 && \
+      kdialog --title "Modem Monitor — retired" --passivepopup "$_MSG" 12 >/dev/null 2>&1 || true
+  fi
+fi
