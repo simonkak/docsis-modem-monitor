@@ -270,9 +270,11 @@ type Collector struct {
 	client *http.Client
 	m      *Metrics
 
-	mu       sync.Mutex
-	lastRaw  map[string]float64 // reset-safe delta state
-	seenLogs map[string]bool    // dedup for Loki pushes
+	mu        sync.Mutex
+	lastRaw   map[string]float64  // reset-safe delta state
+	seenLogs  map[string]bool     // dedup for Loki pushes
+	lastDsIDs map[string]struct{} // chids present in the previous downstream scrape
+	lastUsIDs map[string]struct{} // usids present in the previous upstream scrape
 
 	loginFailures int       // consecutive failed logins (for backoff)
 	nextLogin     time.Time // earliest time we may attempt login again
@@ -292,9 +294,33 @@ func newCollector(cfg Config, m *Metrics) *Collector {
 			},
 		},
 		m:        m,
-		lastRaw:  map[string]float64{},
-		seenLogs: map[string]bool{},
+		lastRaw:   map[string]float64{},
+		seenLogs:  map[string]bool{},
+		lastDsIDs: map[string]struct{}{},
+		lastUsIDs: map[string]struct{}{},
 	}
+}
+
+// setOf returns the key set of a map. sameSet reports whether a map's keys
+// equal a previously captured key set.
+func setOf[T any](m map[string]T) map[string]struct{} {
+	s := make(map[string]struct{}, len(m))
+	for k := range m {
+		s[k] = struct{}{}
+	}
+	return s
+}
+
+func sameSet[T any](m map[string]T, prev map[string]struct{}) bool {
+	if len(m) != len(prev) {
+		return false
+	}
+	for k := range m {
+		if _, ok := prev[k]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Collector) token() string {
@@ -400,21 +426,23 @@ func (c *Collector) login() error {
 }
 
 // delta feeds a reset-safe monotonic counter from the modem's cumulative value.
-func (c *Collector) delta(cv *prometheus.CounterVec, key, label string, cur float64) {
+func (c *Collector) delta(cv *prometheus.CounterVec, key, label string, cur float64, rebond bool) {
 	c.mu.Lock()
 	last, ok := c.lastRaw[key]
 	c.lastRaw[key] = cur
 	c.mu.Unlock()
-	if !ok {
-		return // first observation: don't emit the whole historical total
+	// Re-baseline (emit nothing) when we have no prior sample, or when the
+	// channel set just changed: on a re-bond the modem re-maps chid/usid to
+	// different physical channels, so the counter is discontinuous and a naive
+	// delta would report a huge phantom spike.
+	if !ok || rebond {
+		return
 	}
 	d := cur - last
 	if d < 0 {
-		d = cur // modem rebooted / counter reset
+		return // counter reset (reboot / re-range): re-baseline, don't guess
 	}
-	if d > 0 {
-		cv.WithLabelValues(label).Add(d)
-	}
+	cv.WithLabelValues(label).Add(d)
 }
 
 func (c *Collector) scrapeDownstream() error {
@@ -422,13 +450,35 @@ func (c *Collector) scrapeDownstream() error {
 	if err != nil {
 		return err
 	}
-	n := 0
-	err = decodeElements(body, "downstream", func(d dsChan) {
-		n++
-		id := strings.TrimSpace(d.ChID)
-		if id == "" {
-			return
+	rows := map[string]dsChan{}
+	if err := decodeElements(body, "downstream", func(d dsChan) {
+		if id := strings.TrimSpace(d.ChID); id != "" {
+			rows[id] = d
 		}
+	}); err != nil {
+		return fmt.Errorf("parse downstream: %w", err)
+	}
+	if len(rows) == 0 {
+		return fmt.Errorf("no downstream channels in response")
+	}
+
+	// On a channel re-bond, prune per-chid series that are gone (so
+	// sum(locked) stops counting orphaned channels) and skip delta emission.
+	rebond := !sameSet(rows, c.lastDsIDs)
+	for id := range c.lastDsIDs {
+		if _, ok := rows[id]; !ok {
+			c.m.dsFreq.DeleteLabelValues(id)
+			c.m.dsPower.DeleteLabelValues(id)
+			c.m.dsSNR.DeleteLabelValues(id)
+			c.m.dsRxMER.DeleteLabelValues(id)
+			c.m.dsLocked.DeleteLabelValues(id)
+			c.m.dsPreRaw.DeleteLabelValues(id)
+			c.m.dsPstRaw.DeleteLabelValues(id)
+		}
+	}
+	c.lastDsIDs = setOf(rows)
+
+	for id, d := range rows {
 		if v, ok := pf(d.Freq); ok {
 			c.m.dsFreq.WithLabelValues(id).Set(v)
 		}
@@ -448,18 +498,12 @@ func (c *Collector) scrapeDownstream() error {
 		c.m.dsLocked.WithLabelValues(id).Set(locked)
 		if v, ok := pf(d.PreRs); ok {
 			c.m.dsPreRaw.WithLabelValues(id).Set(v)
-			c.delta(c.m.dsPre, "dspre_"+id, id, v)
+			c.delta(c.m.dsPre, "dspre_"+id, id, v, rebond)
 		}
 		if v, ok := pf(d.PostRs); ok {
 			c.m.dsPstRaw.WithLabelValues(id).Set(v)
-			c.delta(c.m.dsPst, "dspst_"+id, id, v)
+			c.delta(c.m.dsPst, "dspst_"+id, id, v, rebond)
 		}
-	})
-	if err != nil {
-		return fmt.Errorf("parse downstream: %w", err)
-	}
-	if n == 0 {
-		return fmt.Errorf("no downstream channels in response")
 	}
 	return nil
 }
@@ -469,11 +513,30 @@ func (c *Collector) scrapeUpstream() error {
 	if err != nil {
 		return err
 	}
-	err = decodeElements(body, "upstream", func(u usChan) {
-		id := strings.TrimSpace(u.USID)
-		if id == "" {
-			return
+	rows := map[string]usChan{}
+	if err := decodeElements(body, "upstream", func(u usChan) {
+		if id := strings.TrimSpace(u.USID); id != "" {
+			rows[id] = u
 		}
+	}); err != nil {
+		return fmt.Errorf("parse upstream: %w", err)
+	}
+
+	rebond := !sameSet(rows, c.lastUsIDs)
+	for id := range c.lastUsIDs {
+		if _, ok := rows[id]; !ok {
+			c.m.usFreq.DeleteLabelValues(id)
+			c.m.usPower.DeleteLabelValues(id)
+			c.m.usSRate.DeleteLabelValues(id)
+			c.m.usT1Raw.DeleteLabelValues(id)
+			c.m.usT2Raw.DeleteLabelValues(id)
+			c.m.usT3Raw.DeleteLabelValues(id)
+			c.m.usT4Raw.DeleteLabelValues(id)
+		}
+	}
+	c.lastUsIDs = setOf(rows)
+
+	for id, u := range rows {
 		if v, ok := pf(u.Freq); ok {
 			c.m.usFreq.WithLabelValues(id).Set(v)
 		}
@@ -497,12 +560,9 @@ func (c *Collector) scrapeUpstream() error {
 		} {
 			if v, ok := pf(t.val); ok {
 				t.raw.WithLabelValues(id).Set(v)
-				c.delta(t.cv, t.key, id, v)
+				c.delta(t.cv, t.key, id, v, rebond)
 			}
 		}
-	})
-	if err != nil {
-		return fmt.Errorf("parse upstream: %w", err)
 	}
 	return nil
 }

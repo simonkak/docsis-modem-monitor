@@ -1,0 +1,16 @@
+modules:
+  # ICMP echo — the "ping" probe. Needs CAP_NET_RAW on the container.
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4
+
+  # TCP connect — end-to-end liveness that survives ICMP filtering (e.g. an
+  # upstream that drops ping). Used for kakol.dev:443 as a real reachability
+  # check for the user's own server, independent of whether OVH answers ICMP.
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
