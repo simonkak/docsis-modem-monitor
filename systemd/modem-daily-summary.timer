@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily 08:00 trigger for the modem health summary
+# Persistent=true: if the 08:00 fire was missed because the machine was off or
+# asleep, the run is executed once as soon as the user manager is next running
+# (login or resume from suspend) instead of being skipped until tomorrow.
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

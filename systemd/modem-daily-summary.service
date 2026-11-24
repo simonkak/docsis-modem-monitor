@@ -1,0 +1,11 @@
+[Unit]
+Description=Modem/internet daily health summary (DOCSIS line watch)
+Documentation=https://github.com/simonkak/docsis-modem-monitor
+# Order after the desktop is up so notify-send/kdialog find the session bus
+# on a login/resume catch-up fire. Best-effort: the script also sources the
+# live plasmashell environment and writes its log regardless of notifications.
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/szymon/priv/modem-monitor/scripts/daily-summary.sh

@@ -104,6 +104,46 @@ your LAN range).
 - Downstream power: green within ±10 dBmV.
 - Post-RS (uncorrectable) error rate: the primary fault signal — ~0 when healthy.
 
+## Reachability probes & daily summary
+
+Beyond modem signal (the *cause* of a fault), the stack also measures
+end-to-end reachability (the *effect*) with a **blackbox-exporter** service:
+
+- ICMP ping to two neutral anchors (`1.1.1.1`, `8.8.8.8`), the LAN gateway
+  (`192.168.0.1`) and your own infra (`kakol.dev`), plus a TCP:443 check to
+  `kakol.dev` — so you can tell a LAN problem from an ISP problem from an
+  own-infra problem. Loss% is `1 - avg_over_time(probe_success[w])`.
+- Grafana dashboard **Internet Reachability (ping)** (`/d/reachability`):
+  24h loss, probe up/down, and ICMP RTT + TCP-connect latency.
+
+`scripts/daily-summary.sh` queries Prometheus over the last 24h and emits a
+one-line **HEALTHY / WATCH / DEGRADED** verdict (plus a detail block) to
+stdout, appends it to `daily-health.log`, and fires a KDE/Wayland desktop
+notification (urgency escalates on `DEGRADED`). Thresholds are near the top of
+the script; window is overridable with `WIN=…`.
+
+### Run the daily summary on a schedule (systemd user timer)
+
+A **systemd user timer** is preferred over cron because `Persistent=true`
+catches up a run that was missed while the machine was off or asleep (a plain
+cron slot is just skipped). Unit files live in [`systemd/`](systemd/):
+
+```sh
+mkdir -p ~/.config/systemd/user
+cp systemd/modem-daily-summary.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now modem-daily-summary.timer
+
+systemctl --user list-timers modem-daily-summary.timer   # check next/last fire
+systemctl --user start modem-daily-summary.service       # test-fire now
+```
+
+The service runs the script at 08:00 daily; adjust `OnCalendar=` in the timer
+to taste. Desktop notifications need an active graphical session — the script
+sources the live environment from `plasmashell`, and the unit orders itself
+`After=graphical-session.target` so a login/resume catch-up can still notify.
+(For a headless box, drop the notification and just read `daily-health.log`.)
+
 ## Ports
 
 - Grafana: `3001` (host) → 3000 (container).

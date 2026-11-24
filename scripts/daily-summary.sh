@@ -97,16 +97,28 @@ command -v kdialog >/dev/null 2>&1 && \
 # The desktop-env vars exported above are reused here for the notification.
 RETIRE_ON="${RETIRE_ON:-2026-11-28}"
 _today=$(date +%F)   # YYYY-MM-DD sorts lexically == chronologically
+# Detect whichever scheduler is still driving us (systemd user timer preferred;
+# crontab handled too, for older installs / belt-and-suspenders).
+_has_timer=0; _has_cron=0
+command -v systemctl >/dev/null 2>&1 \
+  && systemctl --user is-enabled modem-daily-summary.timer >/dev/null 2>&1 && _has_timer=1
+command -v crontab >/dev/null 2>&1 \
+  && crontab -l 2>/dev/null | grep -q 'daily-summary\.sh' && _has_cron=1
 if [[ "$_today" > "$RETIRE_ON" || "$_today" == "$RETIRE_ON" ]] \
-   && command -v crontab >/dev/null 2>&1 \
-   && crontab -l 2>/dev/null | grep -q 'daily-summary\.sh'; then
+   && { [ "$_has_timer" = 1 ] || [ "$_has_cron" = 1 ]; }; then
   if grep -Eq 'WATCH|DEGRADED' "$LOG" 2>/dev/null; then
     : # line showed instability since the fix — keep watching, do not retire
   else
+    # Disable the systemd timer (service keeps running to finish this invocation).
+    if [ "$_has_timer" = 1 ]; then
+      systemctl --user disable --now modem-daily-summary.timer >/dev/null 2>&1 || true
+    fi
     # Strip only our own lines (comment + schedule); leave other crontab entries.
-    { crontab -l 2>/dev/null | grep -vE 'modem-daily-summary|daily-summary\.sh'; } \
-      | crontab - || true
-    _MSG="Line stable through $_today — daily DOCSIS monitor retired (cron removed). Grafana dashboards stay live at http://localhost:3001."
+    if [ "$_has_cron" = 1 ]; then
+      { crontab -l 2>/dev/null | grep -vE 'modem-daily-summary|daily-summary\.sh'; } \
+        | crontab - || true
+    fi
+    _MSG="Line stable through $_today — daily DOCSIS monitor retired. Grafana dashboards stay live at http://localhost:3001."
     printf '%s\n' "✅ [$STAMP] $_MSG" >> "$LOG"
     command -v notify-send >/dev/null 2>&1 && \
       notify-send -u normal -t 20000 -a "Modem Monitor" "✅ Monitor retired" "$_MSG" 2>/dev/null || true
